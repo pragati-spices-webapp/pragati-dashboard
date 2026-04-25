@@ -64,25 +64,8 @@ button{width:100%;padding:12px;background:#2563eb;color:white;border:none;border
 
 </div>
 
-<script type="module">
+<script>
 
-// ---------- FIREBASE ----------
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyBdQWDtHsSi-nwSC0kY7WvcdzjQLyUJFsk",
-  authDomain: "dashboard-899e3.firebaseapp.com",
-  projectId: "dashboard-899e3",
-  storageBucket: "dashboard-899e3.firebasestorage.app",
-  messagingSenderId: "215053579300",
-  appId: "1:215053579300:web:7cde3ae4b01b6cacc754b1"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-
-// ---------- PRODUCTS ----------
 let products = {
 coriander:["Eagle","Scooter","Single Parrot","Double Parrot"],
 cumin:["Singapore 99%","Europe"],
@@ -92,25 +75,16 @@ desiccated:["Fine Grade","Medium Grade","Flakes"],
 ginger:["Deluxe Maharashtra","Deluxe Karnataka","Super Deluxe Karnataka"]
 };
 
-let data = [];
+let data = JSON.parse(localStorage.getItem("data") || "[]");
 
-// ---------- SAVE ONLINE ----------
-async function save(){
-await setDoc(doc(db,"dashboard","main"),{data:data});
+// ---------- SAVE ----------
+function save(){
+localStorage.setItem("data", JSON.stringify(data));
 render();
-}
-
-// ---------- LOAD ONLINE ----------
-async function load(){
-const snap = await getDoc(doc(db,"dashboard","main"));
-if(snap.exists()){
-data = snap.data().data;
-render();
-}
 }
 
 // ---------- UI ----------
-window.addProduct = function(){
+function addProduct(){
 let type=document.getElementById("product").value;
 if(!type)return;
 
@@ -121,6 +95,7 @@ values:{},
 profit:(type==="coriander"?0:3),
 custom:0
 });
+
 save();
 }
 
@@ -131,37 +106,21 @@ html+=`<div class="card">
 <h3>${p.name}</h3>
 
 <input placeholder="Profit %" value="${p.profit}"
-onchange="updateProfit(${i},this.value)">
+onchange="data[${i}].profit=this.value;save()">
 
 <input placeholder="Custom ₹/kg" value="${p.custom}"
-onchange="updateCustom(${i},this.value)">`;
+onchange="data[${i}].custom=this.value;save()">`;
 
 products[p.type].forEach(q=>{
 html+=`<input placeholder="${q} ₹/kg"
 value="${p.values[q]||""}"
-onchange="updateVal(${i},'${q}',this.value)">`;
+onchange="data[${i}].values['${q}']=this.value;save()">`;
 });
 
 html+="</div>";
 });
 
 document.getElementById("forms").innerHTML=html;
-}
-
-// ---------- UPDATE FUNCTIONS ----------
-window.updateVal = function(i,q,v){
-data[i].values[q]=Number(v)||0;
-save();
-}
-
-window.updateCustom = function(i,v){
-data[i].custom=Number(v)||0;
-save();
-}
-
-window.updateProfit = function(i,v){
-data[i].profit=Number(v)||0;
-save();
 }
 
 // ---------- CALC ----------
@@ -173,11 +132,18 @@ return Math.ceil(n/10)*10;
 }
 
 function calc(price,custom,profit,usd){
-let profitAmt=price*(profit/100);
-let finalINR=price+profitAmt+custom;
-let usdVal=roundToFive((finalINR*1000)/usd);
-let profitPerMT=profitAmt*1000;
-let suggested=roundToFive(usdVal*1.02);
+
+price = Number(price);
+custom = Number(custom);
+profit = Number(profit);
+usd = Number(usd);
+
+let profitAmt = price * (profit/100);
+let finalINR = price + profitAmt + custom;
+let usdVal = roundToFive((finalINR * 1000)/usd);
+
+let profitPerMT = profitAmt * 1000;
+let suggested = roundToFive(usdVal * 1.02);
 
 return {
 cost:price,
@@ -191,12 +157,12 @@ suggested:suggested
 }
 
 // ---------- GENERATE ----------
-window.generate = function(){
+function generate(){
 
 let usd=document.getElementById("usd").value;
-if(!usd)return alert("Enter USD");
+if(!usd)return alert("Enter USD rate");
 
-let email=`Subject: Daily Price Update – Indian Spices (FOB Mumbai/Mundra Port)
+let email = `Subject: Daily Price Update – Indian Spices (FOB Mumbai/Mundra Port)
 
 Dear Sir/Madam,
 
@@ -206,46 +172,51 @@ Please find below our latest price update:
 
 `;
 
-let wa=`🌶️ *Pragati Spices – Daily Update* 🌶️
+let wa = `🌶️ *Pragati Spices – Daily Update* 🌶️
 
 📢 *Today's Rate Update*
 
 `;
 
-let breakdown="";
+let breakdown = "";
 
 data.forEach(p=>{
-email+=`${p.name}\n----------------------------------------\n`;
-wa+=`*${p.name}*\n`;
+
+email += `${p.name}\n----------------------------------------\n`;
+wa += `*${p.name}*\n`;
 
 products[p.type].forEach(q=>{
-let price=p.values[q];
-let r=price?calc(price,p.custom,p.profit,usd):null;
+
+let price = p.values[q];
+let r = price ? calc(price,p.custom,p.profit,usd) : null;
 
 if(r){
-email+=`${q.padEnd(25)} : ${r.usd} USD/MT\n`;
-wa+=`${q} - ${r.usd} USD/MT\n`;
+email += `${q.padEnd(25)} : ${r.usd} USD/MT\n`;
+wa += `${q} - ${r.usd} USD/MT\n`;
 
-breakdown+=`${p.name} - ${q}
-Cost: ₹${r.cost}
-Profit: ₹${r.profit.toFixed(2)}
-Custom: ₹${r.custom}
-Final: ₹${r.final.toFixed(2)}
-USD: ${r.usd}
-Profit/MT: ₹${r.profitPerMT}
-Suggested: ${r.suggested} USD/MT
-----------------------\n`;
+breakdown += `${p.name} - ${q}\n`;
+breakdown += `Cost: ₹${r.cost}\n`;
+breakdown += `Profit: ₹${r.profit.toFixed(2)}\n`;
+breakdown += `Custom: ₹${r.custom}\n`;
+breakdown += `Final: ₹${r.final.toFixed(2)}\n`;
+breakdown += `USD: ${r.usd}\n`;
+breakdown += `Profit/MT: ₹${r.profitPerMT}\n`;
+breakdown += `Suggested: ${r.suggested} USD/MT\n`;
+breakdown += `----------------------\n`;
+
 }else{
-email+=`${q.padEnd(25)} : -\n`;
-wa+=`${q} - -\n`;
+email += `${q.padEnd(25)} : -\n`;
+wa += `${q} - -\n`;
 }
+
 });
 
-email+="\n";
-wa+="\n";
+email += `\n`;
+wa += `\n`;
+
 });
 
-email+=`Looking forward to your valued inquiry.
+email += `Looking forward to your valued inquiry.
 
 Best regards,  
 Pragati Spices  
@@ -253,18 +224,18 @@ Pragati Spices
 📧 info@pragatispices.com | sales@pragatispices.com  
 🌐 www.pragatispices.com`;
 
-wa+=`📦 FOB Mumbai/Mundra Port  
+wa += `📦 FOB Mumbai/Mundra Port  
 📞 +91 98985 31381  
 📧 info@pragatispices.com | sales@pragatispices.com  
 🌐 www.pragatispices.com`;
 
-document.getElementById("email").innerText=email;
-document.getElementById("wa").innerText=wa;
-document.getElementById("breakdown").innerText=breakdown;
+document.getElementById("email").innerText = email;
+document.getElementById("wa").innerText = wa;
+document.getElementById("breakdown").innerText = breakdown;
 }
 
-// ---------- INIT ----------
-load();
+// INIT
+render();
 
 </script>
 
