@@ -64,8 +64,25 @@ button{width:100%;padding:12px;background:#2563eb;color:white;border:none;border
 
 </div>
 
-<script>
+<script type="module">
 
+// ---------- FIREBASE ----------
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBdQWDtHsSi-nwSC0kY7WvcdzjQLyUJFsk",
+  authDomain: "dashboard-899e3.firebaseapp.com",
+  projectId: "dashboard-899e3",
+  storageBucket: "dashboard-899e3.firebasestorage.app",
+  messagingSenderId: "215053579300",
+  appId: "1:215053579300:web:7cde3ae4b01b6cacc754b1"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// ---------- PRODUCTS ----------
 let products = {
 coriander:["Eagle","Scooter","Single Parrot","Double Parrot"],
 cumin:["Singapore 99%","Europe"],
@@ -75,9 +92,25 @@ desiccated:["Fine Grade","Medium Grade","Flakes"],
 ginger:["Deluxe Maharashtra","Deluxe Karnataka","Super Deluxe Karnataka"]
 };
 
-let data = JSON.parse(localStorage.getItem("data")||"[]");
+let data = [];
 
-function addProduct(){
+// ---------- SAVE ONLINE ----------
+async function save(){
+await setDoc(doc(db,"dashboard","main"),{data:data});
+render();
+}
+
+// ---------- LOAD ONLINE ----------
+async function load(){
+const snap = await getDoc(doc(db,"dashboard","main"));
+if(snap.exists()){
+data = snap.data().data;
+render();
+}
+}
+
+// ---------- UI ----------
+window.addProduct = function(){
 let type=document.getElementById("product").value;
 if(!type)return;
 
@@ -88,29 +121,25 @@ values:{},
 profit:(type==="coriander"?0:3),
 custom:0
 });
-
 save();
-}
-
-function save(){
-localStorage.setItem("data",JSON.stringify(data));
-render();
 }
 
 function render(){
 let html="";
 data.forEach((p,i)=>{
-
 html+=`<div class="card">
 <h3>${p.name}</h3>
 
-<input placeholder="Profit %" value="${p.profit}" onchange="data[${i}].profit=this.value;save()">
-<input placeholder="Custom ₹/kg" value="${p.custom}" onchange="data[${i}].custom=this.value;save()">`;
+<input placeholder="Profit %" value="${p.profit}"
+onchange="updateProfit(${i},this.value)">
+
+<input placeholder="Custom ₹/kg" value="${p.custom}"
+onchange="updateCustom(${i},this.value)">`;
 
 products[p.type].forEach(q=>{
 html+=`<input placeholder="${q} ₹/kg"
 value="${p.values[q]||""}"
-onchange="data[${i}].values['${q}']=this.value;save()">`;
+onchange="updateVal(${i},'${q}',this.value)">`;
 });
 
 html+="</div>";
@@ -119,47 +148,55 @@ html+="</div>";
 document.getElementById("forms").innerHTML=html;
 }
 
-function roundToFive(num){
-let rem = num % 10;
-if(rem <= 2.5) return Math.floor(num/10)*10;
-if(rem <= 7.5) return Math.floor(num/10)*10 + 5;
-return Math.ceil(num/10)*10;
+// ---------- UPDATE FUNCTIONS ----------
+window.updateVal = function(i,q,v){
+data[i].values[q]=Number(v)||0;
+save();
 }
 
-function calc(price, custom, profit, usd){
+window.updateCustom = function(i,v){
+data[i].custom=Number(v)||0;
+save();
+}
 
-price = Number(price);
-custom = Number(custom);
-profit = Number(profit);
-usd = Number(usd);
+window.updateProfit = function(i,v){
+data[i].profit=Number(v)||0;
+save();
+}
 
-let profitAmount = price * (profit / 100);
-let finalINR = price + profitAmount + custom;
-let perMT = finalINR * 1000;
-let usdRaw = perMT / usd;
-let usdRounded = roundToFive(usdRaw);
+// ---------- CALC ----------
+function roundToFive(n){
+let r=n%10;
+if(r<=2.5)return Math.floor(n/10)*10;
+if(r<=7.5)return Math.floor(n/10)*10+5;
+return Math.ceil(n/10)*10;
+}
 
-let profitPerMT = profitAmount * 1000;
-let suggested = roundToFive(usdRounded * 1.02);
+function calc(price,custom,profit,usd){
+let profitAmt=price*(profit/100);
+let finalINR=price+profitAmt+custom;
+let usdVal=roundToFive((finalINR*1000)/usd);
+let profitPerMT=profitAmt*1000;
+let suggested=roundToFive(usdVal*1.02);
 
 return {
-cost: price,
-profit: profitAmount,
-custom: custom,
-final: finalINR,
-usd: usdRounded,
-profitPerMT: profitPerMT,
-suggested: suggested,
-margin: profit
+cost:price,
+profit:profitAmt,
+custom:custom,
+final:finalINR,
+usd:usdVal,
+profitPerMT:profitPerMT,
+suggested:suggested
 };
 }
 
-function generate(){
+// ---------- GENERATE ----------
+window.generate = function(){
 
 let usd=document.getElementById("usd").value;
-if(!usd) return alert("Enter USD rate");
+if(!usd)return alert("Enter USD");
 
-let email = `Subject: Daily Price Update – Indian Spices (FOB Mumbai/Mundra Port)
+let email=`Subject: Daily Price Update – Indian Spices (FOB Mumbai/Mundra Port)
 
 Dear Sir/Madam,
 
@@ -169,7 +206,7 @@ Please find below our latest price update:
 
 `;
 
-let wa = `🌶️ *Pragati Spices – Daily Update* 🌶️
+let wa=`🌶️ *Pragati Spices – Daily Update* 🌶️
 
 📢 *Today's Rate Update*
 
@@ -178,43 +215,37 @@ let wa = `🌶️ *Pragati Spices – Daily Update* 🌶️
 let breakdown="";
 
 data.forEach(p=>{
-
-email += `${p.name}\n----------------------------------------\n`;
-wa += `*${p.name}*\n`;
+email+=`${p.name}\n----------------------------------------\n`;
+wa+=`*${p.name}*\n`;
 
 products[p.type].forEach(q=>{
-
 let price=p.values[q];
-let result = price ? calc(price,p.custom,p.profit,usd) : null;
+let r=price?calc(price,p.custom,p.profit,usd):null;
 
-if(result){
+if(r){
+email+=`${q.padEnd(25)} : ${r.usd} USD/MT\n`;
+wa+=`${q} - ${r.usd} USD/MT\n`;
 
-email += `${q.padEnd(25)} : ${result.usd} USD/MT\n`;
-wa += `${q} - ${result.usd} USD/MT\n`;
-
-breakdown += `${p.name} - ${q}\n`;
-breakdown += `Cost: ₹${result.cost}\n`;
-breakdown += `Profit: ₹${result.profit.toFixed(2)}\n`;
-breakdown += `Custom: ₹${result.custom}\n`;
-breakdown += `Final: ₹${result.final.toFixed(2)}\n`;
-breakdown += `USD: ${result.usd}\n`;
-breakdown += `Profit/MT: ₹${result.profitPerMT}\n`;
-breakdown += `Suggested: ${result.suggested} USD/MT\n`;
-breakdown += `----------------------\n`;
-
+breakdown+=`${p.name} - ${q}
+Cost: ₹${r.cost}
+Profit: ₹${r.profit.toFixed(2)}
+Custom: ₹${r.custom}
+Final: ₹${r.final.toFixed(2)}
+USD: ${r.usd}
+Profit/MT: ₹${r.profitPerMT}
+Suggested: ${r.suggested} USD/MT
+----------------------\n`;
 }else{
-email += `${q.padEnd(25)} : -\n`;
-wa += `${q} - -\n`;
+email+=`${q.padEnd(25)} : -\n`;
+wa+=`${q} - -\n`;
 }
-
 });
 
 email+="\n";
 wa+="\n";
-
 });
 
-email += `Looking forward to your valued inquiry.
+email+=`Looking forward to your valued inquiry.
 
 Best regards,  
 Pragati Spices  
@@ -222,7 +253,7 @@ Pragati Spices
 📧 info@pragatispices.com | sales@pragatispices.com  
 🌐 www.pragatispices.com`;
 
-wa += `📦 FOB Mumbai/Mundra Port  
+wa+=`📦 FOB Mumbai/Mundra Port  
 📞 +91 98985 31381  
 📧 info@pragatispices.com | sales@pragatispices.com  
 🌐 www.pragatispices.com`;
@@ -232,7 +263,8 @@ document.getElementById("wa").innerText=wa;
 document.getElementById("breakdown").innerText=breakdown;
 }
 
-render();
+// ---------- INIT ----------
+load();
 
 </script>
 
