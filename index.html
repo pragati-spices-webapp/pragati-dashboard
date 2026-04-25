@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pragati Spices</title>
+
+<style>
+body{margin:0;font-family:Arial;background:#f3f4f6}
+.header{background:#c62828;color:white;padding:15px;text-align:center;font-size:22px}
+.container{padding:15px;max-width:1000px;margin:auto}
+.card{background:white;padding:15px;margin-bottom:15px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,0.06)}
+input,select{width:100%;padding:10px;margin:5px 0;border-radius:6px;border:1px solid #ccc}
+button{width:100%;padding:10px;background:#2563eb;color:white;border:none;border-radius:8px;margin-top:5px}
+.output{background:#f9fafb;padding:10px;border-radius:6px;white-space:pre-wrap}
+</style>
+
+</head>
+
+<body>
+
+<div class="header">🌶️ Pragati Spices</div>
+
+<div class="container">
+
+<div class="card">
+<h3>USD Rate</h3>
+<input id="usd" placeholder="Enter USD Rate">
+</div>
+
+<div class="card">
+<select id="mode">
+<option value="clean">Clean Mode</option>
+<option value="urgent">Urgency Mode</option>
+</select>
+</div>
+
+<div class="card">
+<select id="product">
+<option value="">Select Product</option>
+<option value="coriander">Coriander</option>
+<option value="cumin">Cumin</option>
+<option value="fennel">Fennel</option>
+<option value="turmeric">Turmeric</option>
+<option value="desiccated">Desiccated Coconut</option>
+<option value="ginger">Dry Ginger</option>
+</select>
+<button onclick="addProduct()">Add Product</button>
+</div>
+
+<div id="forms"></div>
+
+<div class="card">
+<button onclick="generate()">Generate Output</button>
+</div>
+
+<div class="card">
+<button onclick="sendWhatsApp()">Send WhatsApp</button>
+<button onclick="downloadPDF()">Download PDF</button>
+<button onclick="copyClients()">Copy Emails</button>
+</div>
+
+<div class="card">
+<h3>Email</h3>
+<div id="email" class="output"></div>
+</div>
+
+<div class="card">
+<h3>WhatsApp</h3>
+<div id="wa" class="output"></div>
+</div>
+
+<!-- CRM STATS -->
+<div class="card">
+<h3>📊 CRM Stats</h3>
+<div id="statsBox" class="output"></div>
+
+<select id="dealFilter" onchange="renderDeals()">
+<option value="all">All</option>
+<option value="today">Today</option>
+<option value="overdue">Overdue</option>
+<option value="won">Won</option>
+<option value="lost">Lost</option>
+</select>
+</div>
+
+<!-- CRM -->
+<div class="card">
+<h3>💼 Deals</h3>
+<input id="dealClient" placeholder="Client Email">
+<input id="dealProduct" placeholder="Product">
+<input id="dealPrice" placeholder="Price">
+<select id="dealStatus">
+<option>New</option>
+<option>Negotiating</option>
+<option>Won</option>
+<option>Lost</option>
+</select>
+<input type="date" id="followUp">
+<button onclick="addDeal()">Add Deal</button>
+
+<div id="dealList" class="output"></div>
+</div>
+
+</div>
+
+<script>
+
+// ---------- PRODUCTS ----------
+let products = {
+coriander:["Eagle","Scooter","Single Parrot","Double Parrot"],
+cumin:["Singapore 99%","Europe"],
+fennel:["Singapore","Semi-Europe","Europe"],
+turmeric:["Single Polish","Double Polish"],
+desiccated:["Fine Grade","Medium Grade","Flakes"],
+ginger:["Deluxe Maharashtra","Deluxe Karnataka","Super Deluxe Karnataka"]
+};
+
+let data = JSON.parse(localStorage.getItem("data")||"[]");
+let deals = JSON.parse(localStorage.getItem("deals")||"[]");
+
+// ---------- PRODUCT ----------
+function addProduct(){
+let type=document.getElementById("product").value;
+if(!type)return;
+
+data.push({type,name:type.toUpperCase(),values:{},profit:(type==="coriander"?0:3),custom:0});
+save();
+}
+
+function save(){
+localStorage.setItem("data",JSON.stringify(data));
+render();
+}
+
+function render(){
+let html="";
+data.forEach((p,i)=>{
+html+=`<div class="card">
+<h3>${p.name}</h3>
+<input placeholder="Profit %" value="${p.profit}" onchange="data[${i}].profit=this.value;save()">
+<input placeholder="Custom ₹" value="${p.custom}" onchange="data[${i}].custom=this.value;save()">`;
+
+products[p.type].forEach(q=>{
+html+=`<input placeholder="${q}" value="${p.values[q]||""}" onchange="data[${i}].values['${q}']=this.value;save()">`;
+});
+
+html+="</div>";
+});
+document.getElementById("forms").innerHTML=html;
+}
+
+// ---------- CALC ----------
+function roundToFive(n){
+let r=n%10;
+if(r<=2.5)return Math.floor(n/10)*10;
+if(r<=7.5)return Math.floor(n/10)*10+5;
+return Math.ceil(n/10)*10;
+}
+
+function calc(price,custom,profit,usd){
+let total=(price+(price*profit/100)+Number(custom))*1000;
+return roundToFive(total/usd);
+}
+
+// ---------- GENERATE ----------
+function generate(){
+let usd=document.getElementById("usd").value;
+if(!usd)return alert("Enter USD");
+
+let email="",wa="";
+data.forEach(p=>{
+email+=p.name+"\n";
+wa+=p.name+"\n";
+
+products[p.type].forEach(q=>{
+let price=p.values[q];
+let val=price?calc(price,p.custom,p.profit,usd):"-";
+email+=q+" : "+val+"\n";
+wa+=q+" - "+val+"\n";
+});
+email+="\n";wa+="\n";
+});
+
+document.getElementById("email").innerText=email;
+document.getElementById("wa").innerText=wa;
+}
+
+// ---------- CRM ----------
+function addDeal(){
+let d={
+client:dealClient.value,
+product:dealProduct.value,
+price:dealPrice.value,
+status:dealStatus.value,
+follow:followUp.value
+};
+deals.push(d);
+localStorage.setItem("deals",JSON.stringify(deals));
+renderDeals();
+}
+
+function renderDeals(){
+let f=document.getElementById("dealFilter").value;
+let html="";
+
+deals.forEach((d,i)=>{
+let today=new Date().toISOString().split("T")[0];
+let bg="";
+if(d.follow===today)bg="#fff3cd";
+if(d.follow<today)bg="#f8d7da";
+
+if(f==="today" && d.follow!==today)return;
+if(f==="overdue" && d.follow>=today)return;
+if(f==="won" && d.status!=="Won")return;
+if(f==="lost" && d.status!=="Lost")return;
+
+html+=`<div style="background:${bg};padding:5px">
+<b>${d.client}</b><br>
+${d.product} - ${d.price}<br>
+${d.status} | ${d.follow}
+</div>`;
+});
+
+dealList.innerHTML=html;
+renderStats();
+}
+
+function renderStats(){
+let s={New:0,Negotiating:0,Won:0,Lost:0};
+deals.forEach(d=>s[d.status]++);
+statsBox.innerText=`New:${s.New} | Neg:${s.Negotiating} | Won:${s.Won} | Lost:${s.Lost}`;
+}
+
+// ---------- TOOLS ----------
+function sendWhatsApp(){
+window.open("https://wa.me/?text="+encodeURIComponent(wa.innerText));
+}
+
+function downloadPDF(){
+let w=window.open("");
+w.document.write("<pre>"+email.innerText+"</pre>");
+w.print();
+}
+
+function copyClients(){
+navigator.clipboard.writeText("emails here");
+alert("Copied");
+}
+
+render();
+renderDeals();
+
+</script>
+
+</body>
+</html>
